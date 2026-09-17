@@ -200,9 +200,11 @@ Tracker::Tracker(const std::string & config_path, Solver & solver)
   if (yaml["spin_state_confirm_frames"].IsDefined()) {
     spin_confirm_frames_ = std::max(1, yaml["spin_state_confirm_frames"].as<int>());
   }
-  if (yaml["spin_state_switch_margin"].IsDefined()) {
-    spin_switch_margin_ = yaml["spin_state_switch_margin"].as<double>();
-  }
+  // 滑动窗口大小 = 2×confirm−1，使 confirm 票构成严格过半（任意时刻至多一个状态过半）
+  const int spin_window = std::max(1, 2 * spin_confirm_frames_ - 1);
+  cand_window_.assign(static_cast<size_t>(spin_window), SpinModel::slow);
+  cand_window_idx_ = 0;
+  cand_votes_ = {spin_window, 0, 0};
   SpinIMM::Params imm_params;
   imm_params.transition << 0.93, 0.05, 0.02, 0.04, 0.93, 0.03, 0.03, 0.07, 0.90;
   imm_params.r_yaw = 2e-3;
@@ -555,10 +557,14 @@ bool Tracker::set_target(std::list<Armor> & armors, std::chrono::steady_clock::t
   imm_dw_lpf_ = 0.0;
   imm_last_t_ = t;
 
-  // 新目标重置 spin_state 滞回状态
+  // 新目标重置 spin_state 投票窗口（全部填充 slow，与 confirmed 一致）
   confirmed_spin_state_ = SpinModel::slow;
-  pending_spin_state_ = SpinModel::slow;
-  pending_spin_count_ = 0;
+  if (!cand_window_.empty()) {
+    cand_window_.assign(cand_window_.size(), SpinModel::slow);
+    cand_window_idx_ = 0;
+    cand_votes_ = {0, 0, 0};
+    cand_votes_[0] = static_cast<int>(cand_window_.size());
+  }
 
   update_motion_state(target_, t);
   return true;
@@ -696,26 +702,18 @@ void Tracker::update_motion_state(Target & target, std::chrono::steady_clock::ti
     }
   }
 
-  // spin_state 滞回：候选状态需连续确认若干帧（IMM 路径还要求概率优势）才切换，
-  // 避免野值或概率互抖导致状态来回跳变
-  if (candidate == confirmed_spin_state_) {
-    pending_spin_state_ = candidate;
-    pending_spin_count_ = 0;
-  } else if (candidate == pending_spin_state_) {
-    pending_spin_count_++;
-  } else {
-    pending_spin_state_ = candidate;
-    pending_spin_count_ = 1;
-  }
+  // spin_state 滑动窗口多数票：候选入窗/最老出窗，某状态≠当前输出且票数≥confirm 即切换。
+  // 不要求候选连续（交替累计同样有效），不设概率裕度（过半即主导），两者皆为旧机制死锁根源
+  cand_votes_[static_cast<int>(cand_window_[cand_window_idx_])]--;
+  cand_window_[cand_window_idx_] = candidate;
+  cand_votes_[static_cast<int>(candidate)]++;
+  cand_window_idx_ = (cand_window_idx_ + 1) % cand_window_.size();
 
-  bool switch_allowed = pending_spin_count_ >= spin_confirm_frames_;
-  if (switch_allowed && imm_enabled_ && spin_imm_.initialized()) {
-    switch_allowed = model_probs[static_cast<size_t>(pending_spin_state_)] >
-                     model_probs[static_cast<size_t>(confirmed_spin_state_)] + spin_switch_margin_;
-  }
-  if (switch_allowed) {
-    confirmed_spin_state_ = pending_spin_state_;
-    pending_spin_count_ = 0;
+  for (int s = 0; s < 3; ++s) {
+    const auto state = static_cast<SpinModel>(s);
+    if (state != confirmed_spin_state_ && cand_votes_[s] >= spin_confirm_frames_) {
+      confirmed_spin_state_ = state;
+    }
   }
   spin_state = confirmed_spin_state_;
 
@@ -753,6 +751,7 @@ void Tracker::update_motion_state(Target & target, std::chrono::steady_clock::ti
   nlohmann::json plot_json;
   plot_json["imm_enabled"] = imm_enabled_;
   plot_json["spin_state"] = static_cast<int>(spin_state);
+  plot_json["spin_state_candidate"] = static_cast<int>(candidate);
   plot_json["linear_speed"] = linear_speed;
   plot_json["fused_w"] = w;
   plot_json["fused_alpha"] = alpha;

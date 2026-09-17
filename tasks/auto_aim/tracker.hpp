@@ -2,9 +2,11 @@
 #define AUTO_AIM__TRACKER_HPP
 
 #include <Eigen/Dense>
+#include <array>
 #include <chrono>
 #include <list>
 #include <string>
+#include <vector>
 
 #include "armor.hpp"
 #include "imm.hpp"
@@ -73,12 +75,13 @@ private:
   std::chrono::steady_clock::time_point imm_last_t_;
   double imm_r_yaw_;  // IMM 观测噪声 R(yaw)，来自 yaml imm_r_yaw
 
-  // spin_state 滞回切换：抑制单帧野值和模型概率互抖
+  // spin_state 滑动窗口多数票：最近(2×confirm−1)帧候选中出现≥confirm次且≠当前状态即切换
+  // 无死锁（交替候选照常累计），单帧野值仅1票无法翻转
   SpinModel confirmed_spin_state_ = SpinModel::slow;
-  SpinModel pending_spin_state_ = SpinModel::slow;
-  int pending_spin_count_ = 0;
   int spin_confirm_frames_ = 4;
-  double spin_switch_margin_ = 0.1;
+  std::vector<SpinModel> cand_window_;
+  size_t cand_window_idx_ = 0;
+  std::array<int, 3> cand_votes_{1, 0, 0};
 
   void state_machine(bool found);
   void update_motion_state(Target & target, std::chrono::steady_clock::time_point t);
