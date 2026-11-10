@@ -12,6 +12,10 @@ main分支主要在步兵上使用，如果需要对应兵种请根据分支去�
 见 [Quickstart.md](Quickstart.md)
 （没写完）
 
+### 2.1 仿真在线调试（rm_aim_sim）
+不接实车相机/下位机，直接用 Godot 仿真闭环调试自瞄：
+见 [docs/simulator.md](docs/simulator.md)。入口为 `build/standard_sim configs/sim.yaml`。
+
 ## 3. 代码结构
 ```
 Ember

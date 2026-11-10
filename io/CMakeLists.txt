@@ -9,8 +9,11 @@ add_subdirectory(serial)
 add_library(io STATIC 
     hikrobot/hikrobot.cpp    
     mindvision/mindvision.cpp  
-    usbcamera/usbcamera.cpp  
+    usbcamera/usbcamera.cpp
     simulator/simulator.cpp
+    rm_aim_sim/rm_aim_sim_client.cpp
+    rm_aim_sim/rm_aim_sim_camera.cpp
+    rm_aim_sim/rm_aim_sim_cboard.cpp
     camera.cpp
     cboard.cpp
     dm_imu/dm_imu.cpp
@@ -38,7 +41,7 @@ else()
   message(FATAL_ERROR "Unsupported architecture: ${CMAKE_HOST_SYSTEM_PROCESSOR}!")
 endif()
 
-target_link_libraries(io MvCameraControl MVSDK usb-1.0 yaml-cpp serial fmt::fmt spdlog::spdlog tools)
+target_link_libraries(io MvCameraControl MVSDK usb-1.0 yaml-cpp serial fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json tools)
 
 # serial_driver 是 ament 包，需要用 ament_target_dependencies 设置 include 和链接
 ament_target_dependencies(io serial_driver)

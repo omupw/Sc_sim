@@ -4,6 +4,7 @@
 
 #include "hikrobot/hikrobot.hpp"
 #include "mindvision/mindvision.hpp"
+#include "rm_aim_sim/rm_aim_sim_camera.hpp"
 #include "simulator/simulator.hpp"
 #include "tools/yaml.hpp"
 
@@ -30,6 +31,10 @@ Camera::Camera(const std::string & config_path)
 
   else if (camera_name == "simulator") {
     camera_ = std::make_unique<SimulatorCamera>();
+  }
+
+  else if (camera_name == "rm_aim_sim") {
+    camera_ = std::make_unique<rm_aim_sim::Camera>(config_path);
   }
 
   else {
